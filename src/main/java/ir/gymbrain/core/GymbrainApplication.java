@@ -3,6 +3,7 @@ package ir.gymbrain.core;
 import ir.gymbrain.core.annotation.Controller;
 import ir.gymbrain.core.annotation.Request;
 import ir.gymbrain.core.context.ControllerContext;
+import ir.gymbrain.core.http.RequestUtil;
 import ir.gymbrain.log.GLog;
 import ir.gymbrain.resource.MjReader;
 import org.reflections.Reflections;
@@ -25,14 +26,11 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public class GymbrainApplication {
-    private Class<?> mainClass;
-
+    RequestUtil requestUtil = null;
     private String[] args;
-
     private GLog log;
 
     public GymbrainApplication(Class<?> main, String... args) {
-        mainClass = main;
         log = new GLog(main);
         this.args = args;
     }
@@ -64,6 +62,7 @@ public class GymbrainApplication {
                         byte[] buffer = new byte[10000];
                         int total = input.read(buffer);
                         String request = new String(Arrays.copyOfRange(buffer, 0, total));
+                        afterLoadRequest(request);
                         String response = "HTTP/1.1 200 OK\r\n\r\nir.gymbrain.example.Hello, world!";
                         output.write(response.getBytes());
                     }
@@ -101,6 +100,10 @@ public class GymbrainApplication {
         });
 
 
+    }
+
+    private void afterLoadRequest(String request) {
+        this.requestUtil = new RequestUtil().parseContent(request);
     }
 
 }
