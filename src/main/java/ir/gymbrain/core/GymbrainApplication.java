@@ -18,8 +18,11 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class GymbrainApplication {
     private Class<?> mainClass;
@@ -34,22 +37,21 @@ public class GymbrainApplication {
         this.args = args;
     }
 
-    public void start() throws IOException, URISyntaxException {
+    public void start(GymbrainApplicationConfiguration configuration) throws IOException, URISyntaxException {
         log.log("application starting ...");
         MjReader mjReader = new MjReader();
 
-        Set<Class<?>> typesAnnotatedWith1 = new Reflections().getTypesAnnotatedWith(Controller.class);
+        List<Reflections> reflections = new ArrayList<>();
 
-        typesAnnotatedWith1.stream().parallel().forEach(aClass -> {
-            Controller annotation = aClass.getAnnotation(Controller.class);
-            ControllerContext.put(annotation.prefixPath(), aClass);
-        });
-        Reflections reflections = new Reflections(
-                new ConfigurationBuilder().setUrls(
-                        ClasspathHelper.forPackage("ir")).setScanners(
-                        new MethodAnnotationsScanner()));
+        configuration.getControllerBasePackages().parallelStream()
+                .forEach(basePackage -> {
+                    reflections.add(new Reflections(
+                            new ConfigurationBuilder().setUrls(
+                                    ClasspathHelper.forPackage("ir")).setScanners(
+                                    new MethodAnnotationsScanner())));
+                });
 
-        Set<Method> methodsAnnotatedWith = reflections.getMethodsAnnotatedWith(Request.class);
+        loadControllers(reflections);
 
         Integer port = mjReader.getIntegerByKey("port");
         try (ServerSocket server = new ServerSocket(port)) {
@@ -72,6 +74,32 @@ public class GymbrainApplication {
                 }
             }
         }
+
+    }
+
+    private void loadControllers(List<Reflections> reflections) {
+        log.log("start scanning controller class...");
+        Set<Class<?>> classAnnotatedWith = new Reflections().getTypesAnnotatedWith(Controller.class);
+        log.log("find " + classAnnotatedWith.size() + " controller class.");
+        log.log("start scanning method class...");
+        List<Method> requestMethods = new ArrayList<>();
+        reflections.parallelStream().forEach(ref -> {
+            Set<Method> methods = ref.getMethodsAnnotatedWith(Request.class);
+            requestMethods.addAll(methods);
+        });
+        log.log("find " + requestMethods.size() + " request method.");
+
+        classAnnotatedWith.parallelStream().forEach(aClass -> {
+            Controller annotation = aClass.getAnnotation(Controller.class);
+            ControllerContext.put(annotation.name(), aClass);
+
+            List<Method> methodsByClass = requestMethods.parallelStream()
+                    .filter(method -> method.getDeclaringClass().equals(aClass))
+                    .collect(Collectors.toList());
+
+            ControllerContext.putMethod(aClass, methodsByClass);
+        });
+
 
     }
 
